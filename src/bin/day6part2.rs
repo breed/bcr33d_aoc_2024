@@ -89,8 +89,6 @@ fn main() {
         grid.push(line.chars().collect());
     }
 
-    let mut dirs = vec![vec![HashSet::<char>::new(); grid[0].len()]; grid.len()];
-
     let starting_heading = 'outer: loop {
         for r in 0..grid.len() {
             for c in 0..grid[0].len() {
@@ -105,27 +103,40 @@ fn main() {
         }
     };
 
+    // okay, we are going to use CPU rather than brain!
+    for r in 0..grid.len() {
+        for c in 0..grid[0].len() {
+            if grid[r][c] == '.' {
+                grid[r][c] = '#';
+                if !explore(&mut grid, &starting_heading) {
+                    println!("({}, {})", r, c);
+                    total += 1;
+                }
+                grid[r][c] = '.';
+            }
+        }
+    }
+
+    println!("{}", total);
+}
+
+fn explore(grid: &mut Vec<Vec<char>>, starting_heading: &Heading) -> bool {
     let mut heading = starting_heading.clone();
-    heading.fill_behind(&grid, &mut dirs);
+    let mut dirs = vec![vec![HashSet::<char>::new(); grid[0].len()]; grid.len()];
+
     while heading.on_grid(&grid) {
+        if dirs[heading.row as usize][heading.col as usize].contains(&heading.dir) {
+            // we've been here before
+            return false;
+        }
         dirs[heading.row as usize][heading.col as usize].insert(heading.dir);
         let mut new_heading = heading.move_heading(true);
-        if new_heading.on_wall(&grid) {
+        while new_heading.on_wall(&grid) {
             new_heading = heading.rotate();
-            new_heading.fill_behind(&grid, &mut dirs);
-        } else {
-            let rot = rotation_map(heading.dir);
-            let poss_dirs = &dirs[heading.row as usize][heading.col as usize];
-            if poss_dirs.contains(&rot) {
-                total += 1;
-            }
         }
         heading = new_heading
     }
-
-    print_dirs(&dirs);
-
-    println!("{}", total);
+    return true;
 }
 
 fn print_dirs(dirs: &Vec<Vec<HashSet<char>>>) {
