@@ -1,176 +1,138 @@
-use std::collections::HashSet;
-use std::ops::Range;
 use bcr33d_aoc_2024::MyIn;
+use std::collections::HashSet;
+
+fn rotation_map(dir: char) -> char {
+    match dir {
+        '^' => '>',
+        '>' => 'v',
+        '<' => '^',
+        'v' => '<',
+        _ => panic!("Unknown direction: {}", dir),
+    }
+}
+
+fn move_delta(dir: char) -> Delta {
+    match dir {
+        '^' => Delta { drow: -1, dcol: 0 },
+        '>' => Delta { drow: 0, dcol: 1 },
+        '<' => Delta { drow: 0, dcol: -1 },
+        'v' => Delta { drow: 1, dcol: 0 },
+        _ => panic!("Unknown direction: {}", dir),
+    }
+}
+
+#[derive(Clone)]
+#[derive(Debug)]
+struct Heading {
+    row: isize,
+    col: isize,
+    dir: char,
+}
+
+impl Heading {
+    fn rotate(&self) -> Heading {
+        Heading {
+            row: self.row,
+            col: self.col,
+            dir: rotation_map(self.dir),
+        }
+    }
+
+    fn on_grid(&self, grid: &Vec<Vec<char>>) -> bool {
+        self.row >= 0
+            && self.row < grid.len() as isize
+            && self.col >= 0
+            && self.col < grid[0].len() as isize
+    }
+
+    fn on_wall(&self, grid: &Vec<Vec<char>>) -> bool {
+        self.on_grid(grid) && grid[self.row as usize][self.col as usize] == '#'
+    }
+
+    fn insert_dir(&self, dirs: &mut Vec<Vec<HashSet<char>>>) {
+        dirs[self.row as usize][self.col as usize].insert(self.dir);
+    }
+
+    fn fill_behind(&self, grid: &Vec<Vec<char>>, dirs: &mut Vec<Vec<HashSet<char>>>) {
+        let mut cur_heading = self.clone();
+        while cur_heading.on_grid(grid) && !cur_heading.on_wall(grid) {
+            cur_heading.insert_dir(dirs);
+            cur_heading = cur_heading.move_heading(false);
+        }
+    }
+
+    fn move_heading(&self, forward: bool) -> Heading {
+        let d = move_delta(self.dir);
+        Heading {
+            row: self.row + d.drow * if forward { 1 } else { -1 },
+            col: self.col + d.dcol * if forward { 1 } else { -1 },
+            dir: self.dir,
+        }
+    }
+}
+
+struct Delta {
+    drow: isize,
+    dcol: isize,
+}
 
 fn main() {
     println!("day6 part 2");
     let mut myin = MyIn::new();
     let mut total: i64 = 0;
-    let mut grid = Vec::new();
+    let mut grid: Vec<Vec<char>> = Vec::new();
     loop {
         let line = myin.read_line();
         if line.is_empty() {
             break;
         }
-        grid.push(line.into_bytes());
+        grid.push(line.chars().collect());
     }
-    let mut x: i32 = 0;
-    let mut y: i32 = 0;
-    'outer:
-    for row in 0..grid.len() {
-        for col in 0..grid[row].len() {
-            if grid[row][col] == b'^' || grid[row][col] == b'v' || grid[row][col] == b'<' || grid[row][col] == b'>' {
-                x = col as i32;
-                y = row as i32;
-                break 'outer;
+
+    let mut dirs = vec![vec![HashSet::<char>::new(); grid[0].len()]; grid.len()];
+
+    let starting_heading = 'outer: loop {
+        for r in 0..grid.len() {
+            for c in 0..grid[0].len() {
+                if grid[r][c] == '^' {
+                    break 'outer Heading {
+                        row: r as isize,
+                        col: c as isize,
+                        dir: '^',
+                    };
+                }
             }
         }
+    };
+
+    let mut heading = starting_heading.clone();
+    heading.fill_behind(&grid, &mut dirs);
+    while heading.on_grid(&grid) {
+        dirs[heading.row as usize][heading.col as usize].insert(heading.dir);
+        let mut new_heading = heading.move_heading(true);
+        if new_heading.on_wall(&grid) {
+            new_heading = heading.rotate();
+            new_heading.fill_behind(&grid, &mut dirs);
+        } else {
+            let rot = rotation_map(heading.dir);
+            let poss_dirs = &dirs[heading.row as usize][heading.col as usize];
+            if poss_dirs.contains(&rot) {
+                total += 1;
+            }
+        }
+        heading = new_heading
     }
 
-    let mut dirs = vec![vec![HashSet::new(); grid[0].len()]; grid.len()];
+    print_dirs(&dirs);
 
-    let startx = x;
-    let starty = y;
-
-    grid[y as usize][x as usize] = b'v';
-    print_grid(&grid);
-    explore(&mut total, &mut grid, x, y, &mut dirs, true);
-    x = startx;
-    y = starty;
-    grid[y as usize][x as usize] = b'^';
-    total = 0;
-    explore(&mut total, &mut grid, x, y, &mut dirs, false);
     println!("{}", total);
 }
 
-fn explore(total: &mut i64, grid: &mut Vec<Vec<u8>>, mut x: i32, mut y: i32, dirs: &mut Vec<Vec<HashSet<u8>>>, backwards: bool) {
-    loop {
-        let origx = x;
-        let origy = y;
-        let c = grid[y as usize][x as usize];
-        match c {
-            b'^' => {
-                y -= 1;
-            }
-            b'v' => {
-                y += 1;
-            }
-            b'<' => {
-                x -= 1;
-            }
-            b'>' => {
-                x += 1;
-            }
-            _ => {
-                panic!("bad dir");
-            }
-        }
-        if y < 0 || y >= grid.len() as i32 || x < 0 || x >= grid[y as usize].len() as i32 {
-            break;
-        }
-        if grid[y as usize][x as usize] == b'#' {
-            x = origx;
-            y = origy;
-            grid[y as usize][x as usize] = match c {
-                b'^' => {
-                    fill(dirs, &(0..x), &(y..y+1), b'>', backwards);
-                    b'>'
-                }
-                b'v' => {
-                    fill(dirs, &(x..grid[0].len() as i32), &(y..y+1), b'<', backwards);
-                    b'<'
-                },
-                b'<' => {
-                    fill(dirs, &(x..x+1), &(y..grid.len() as i32), b'^', backwards);
-                    b'^'
-                },
-                b'>' => {
-                    fill(dirs, &(x..x+1), &(0..y), b'v', backwards);
-                    b'v'
-                },
-                _ => panic!("bad dir"),
-            }
-        } else {
-            grid[y as usize][x as usize] = c;
-           store_dir(&mut dirs[y as usize][x as usize], c, backwards);
-           .print_grid(&grid);
-            match c {
-                b'^' => {
-                    if dirs_has(&dirs, origx + 1, origy, b'>') {
-                        println!("at {},{} looking at {}", x, y, c as char);
-                        *total += 1;
-                    }
-                }
-                b'v' => {
-                    if dirs_has(&dirs, origx - 1, origy, b'<') {
-                        println!("at {},{} looking at {}", x, y, c as char);
-                        *total += 1;
-                    }
-                }
-                b'<' => {
-                    if dirs_has(&dirs, origx, origy - 1, b'^') {
-                        println!("at {},{} looking at {}", x, y, c as char);
-                        *total += 1;
-                    }
-                }
-                b'>' => {
-                    if dirs_has(&dirs, origx, origy + 1, b'v') {
-                        println!("at {},{} looking at {}", x, y, c as char);
-                        *total += 1;
-                    }
-                }
-                _ => {
-                    panic!("bad dir");
-                }
-            }
-        }
-    }
-}
-
-fn char_map(c: u8, backwards: bool) -> u8 {
-    if backwards {
-        match c {
-            b'^' => b'v',
-            b'v' => b'^',
-            b'<' => b'>',
-            b'>' => b'<',
-            _ => panic!("bad dir"),
-        }
-    } else {
-        c
-    }
-}
-
-fn store_dir(dir: &mut HashSet<u8>, c: u8, backwards: bool) {
-    dir.insert(
-        char_map(c, backwards)
-    );
-}
-
-fn fill(dir: &mut Vec<Vec<HashSet<u8>>>, cols: &Range<i32>, rows: &Range<i32>, mut c: u8, backwards: bool) {
-    c = char_map(c, backwards);
-    for col in cols.clone().into_iter() {
-        for row in rows.clone().into_iter() {
-            dir[row as usize][col as usize].insert(c);
-        }
-    }
-}
-
-fn dirs_has(dirs: &Vec<Vec<HashSet<u8>>>, x: i32, y: i32, c: u8) -> bool {
-    if x >= 0 && x < dirs[0].len() as i32 && y >= 0 && y < dirs.len() as i32 {
-        println!("checking {:?} {},{}", dirs[y as usize][x as usize], x, y);
-        dirs[y as usize][x as usize].contains(&c)
-    } else {
-        println!("nothing");
-        false
-    }
-}
-
-fn print_grid(p0: &Vec<Vec<u8>>) {
-    println!("-------------");
-    for row in p0 {
-        for c in row {
-            print!("{}", *c as char);
+fn print_dirs(dirs: &Vec<Vec<HashSet<char>>>) {
+    for r in 0..dirs.len() {
+        for c in 0..dirs[0].len() {
+            let s = dirs[r][c].iter().collect::<String>();
+            print!("{:<5}", if s.is_empty() { ".".to_string() } else { s });
         }
         println!();
     }
