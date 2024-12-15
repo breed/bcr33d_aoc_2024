@@ -28,7 +28,6 @@ impl MyIn {
             None => line,
             Some((word, rest)) => {
                 self.cur_line = Option::Some(rest.to_string());
-                println!("read {} {:?}\n", word, &self.cur_line);
                 word.to_string()
             }
         }
